@@ -1266,7 +1266,7 @@ console.timeEnd("PDF - Subida a Supabase");
     await savePdfFile(pdfBlob,fileName);
   }
 
-  if($("choosePdfFolder"))$("choosePdfFolder").onclick=choosePdfFolder;
+  document.querySelectorAll("[data-choose-pdf-folder]").forEach(button=>button.onclick=choosePdfFolder);
 
   $("generatePdf").onclick=async()=>{
     if(!lastSavedReportId)return;
