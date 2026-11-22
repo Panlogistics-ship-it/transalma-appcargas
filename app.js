@@ -33,6 +33,7 @@
     });
     db.close();return handle;
   }
+  function setPdfFolderMessage(text){document.querySelectorAll(".pdf-folder-message").forEach(el=>el.textContent=text||"")}
   async function choosePdfFolder(){
     if(!window.showDirectoryPicker){
       alert("Este navegador no permite seleccionar una carpeta directamente. Usa Microsoft Edge actualizado.");
@@ -41,9 +42,9 @@
     try{
       const handle=await window.showDirectoryPicker({id:"transalma-report-pdfs",mode:"readwrite"});
       await storePdfFolderHandle(handle);
-      msg("pdfFolderMessage",`Carpeta de reportes configurada: ${handle.name}`);
+      setPdfFolderMessage(`Carpeta de reportes configurada: ${handle.name}`);
     }catch(error){
-      if(error.name!=="AbortError")msg("pdfFolderMessage",error.message||"No se pudo seleccionar la carpeta.");
+      if(error.name!=="AbortError")setPdfFolderMessage(error.message||"No se pudo seleccionar la carpeta.");
     }
   }
   async function savePdfFile(blob,fileName){
@@ -57,10 +58,10 @@
         const writable=await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
-        msg("pdfFolderMessage",`Guardado en ${handle.name}: ${fileName}`);
+        setPdfFolderMessage(`Guardado en ${handle.name}: ${fileName}`);
         return;
       }
-      msg("pdfFolderMessage","El navegador necesita permiso para la carpeta. Selecciónala nuevamente.");
+      setPdfFolderMessage("El navegador necesita permiso para la carpeta. Selecciónala nuevamente.");
     }
     // Respaldo compatible: descarga normal del navegador, sin cambiar su carpeta global.
     const url=URL.createObjectURL(blob);
