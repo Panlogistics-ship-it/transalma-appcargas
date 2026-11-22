@@ -89,6 +89,7 @@ let lastSavedReportNumber=sessionStorage.getItem("lastSavedReportNumber");
   $("adminPanel").hidden=true;
   $("editPanel").hidden=true;
   $("usersPanel").hidden=true;
+  $("driveArchivePanel").hidden=true;
   $("createUserPanel").hidden=true;  
 }
 
@@ -121,6 +122,7 @@ let lastSavedReportNumber=sessionStorage.getItem("lastSavedReportNumber");
       $("adminCard").hidden=!(currentIsAdmin||currentIsSupervisor);
 
 $("openAdminUsers").hidden=!currentIsAdmin;
+$("openDriveArchive").hidden=!currentIsAdmin;
 
 document.querySelectorAll('.action[data-type="mercancia"], .action[data-type="excepcion"]').forEach(button => {
   button.hidden=!currentCanOperate;
