@@ -1724,6 +1724,7 @@ $("editMerchandiseSection").hidden =
       details.forEach(detail=>createEditDetailRow(detail));
     }
   }
+  window.TRANSALMA_OPEN_EDIT = openEdit;
 
   function parseClientEmails(value){
     return String(value||"").split(/[;,\n]+/).map(email=>email.trim()).filter(Boolean);
