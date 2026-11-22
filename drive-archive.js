@@ -338,6 +338,28 @@
     jsonLink.rel = "noopener";
     jsonLink.textContent = "Abrir metadatos originales";
     out.appendChild(jsonLink);
+    if (report.id) {
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = "Abrir reporte en el formulario de edición";
+      editButton.style.marginTop = "12px";
+      editButton.addEventListener("click", async () => {
+        if (typeof window.TRANSALMA_OPEN_EDIT !== "function") {
+          status("El formulario de edición no está disponible.");
+          return;
+        }
+        editButton.disabled = true;
+        try {
+          await window.TRANSALMA_OPEN_EDIT(report.id);
+          closePanel();
+        } catch (error) {
+          status(error.message || "No se pudo abrir el reporte para editar.");
+        } finally {
+          editButton.disabled = false;
+        }
+      });
+      out.appendChild(editButton);
+    }
     out.dataset.report = JSON.stringify(metadata);
   }
 
