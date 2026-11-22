@@ -255,9 +255,135 @@
     return summary;
   }
 
+
+  async function listDriveFiles(query, fields = "files(id,name,mimeType,webViewLink,parents,size),nextPageToken") {
+    const all = [];
+    let pageToken = "";
+    do {
+      const params = new URLSearchParams({ q: query, pageSize: "100", fields });
+      if (pageToken) params.set("pageToken", pageToken);
+      const data = await driveRequest("https://www.googleapis.com/drive/v3/files?" + params.toString());
+      all.push(...(data.files || []));
+      pageToken = data.nextPageToken || "";
+    } while (pageToken);
+    return all;
+  }
+
+  async function searchArchivedReport() {
+    if (!accessToken) throw new Error("Conecta Google Drive primero.");
+    const raw = $("archiveReportNumber")?.value.trim().toUpperCase() || "";
+    if (!/^TI-\\d{6}$/.test(raw)) throw new Error("Escribe el número completo, por ejemplo TI-000001.");
+    const out = $("archiveSearchResults");
+    out.replaceChildren();
+    const metadataName = raw + "_METADATOS.json";
+    const matches = await listDriveFiles(
+      "name = '" + escapeDriveQuery(metadataName) + "' and trashed = false",
+      "files(id,name,mimeType,parents,webViewLink),nextPageToken"
+    );
+    if (!matches.length) {
+      out.textContent = "No se encontró " + raw + " en la carpeta de archivo autorizada. Verifica que seleccionaste TRANSALMA_REPORTES_ARCHIVO.";
+      return;
+    }
+    const metaFile = matches[0];
+    const response = await fetch("https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(metaFile.id) + "?alt=media", {
+      headers: { Authorization: "Bearer " + accessToken }
+    });
+    if (!response.ok) throw new Error("No se pudieron leer los metadatos del reporte (HTTP " + response.status + ").");
+    const metadata = await response.json();
+    const reportFolderId = (metaFile.parents || [])[0];
+    if (!reportFolderId) throw new Error("El archivo de metadatos no tiene carpeta de reporte asociada.");
+    const files = await listDriveFiles("'" + escapeDriveQuery(reportFolderId) + "' in parents and trashed = false");
+    const sections = {};
+    for (const file of files) {
+      if (file.mimeType === FOLDER_MIME) {
+        sections[file.name] = await listDriveFiles("'" + escapeDriveQuery(file.id) + "' in parents and trashed = false");
+      }
+    }
+    const title = document.createElement("h3");
+    title.textContent = raw + " · Reporte histórico encontrado";
+    out.appendChild(title);
+    const info = document.createElement("p");
+    const report = metadata.report || {};
+    info.textContent = [report.fecha, report.contenedor, report.client_name, report.status].filter(Boolean).join(" · ") || "Metadatos disponibles";
+    out.appendChild(info);
+    const addSection = (label, items) => {
+      const heading = document.createElement("h4");
+      heading.textContent = label;
+      out.appendChild(heading);
+      if (!items?.length) {
+        const empty = document.createElement("p");
+        empty.textContent = "Sin archivos registrados.";
+        out.appendChild(empty);
+        return;
+      }
+      const list = document.createElement("ul");
+      for (const file of items) {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "https://drive.google.com/uc?id=" + encodeURIComponent(file.id) + "&export=download";
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = file.name;
+        li.appendChild(a);
+        list.appendChild(li);
+      }
+      out.appendChild(list);
+    };
+    addSection("PDF_REPORTES", sections.PDF_REPORTES || []);
+    addSection("FOTOGRAFIAS", sections.FOTOGRAFIAS || []);
+    addSection("FIRMAS", sections.FIRMAS || []);
+    const jsonLink = document.createElement("a");
+    jsonLink.href = "https://drive.google.com/file/d/" + encodeURIComponent(metaFile.id) + "/view";
+    jsonLink.target = "_blank";
+    jsonLink.rel = "noopener";
+    jsonLink.textContent = "Abrir metadatos originales";
+    out.appendChild(jsonLink);
+    out.dataset.report = JSON.stringify(metadata);
+  }
+
+  function installArchiveSearch() {
+    if ($("archiveSearchPanel")) return;
+    const panel = document.createElement("section");
+    panel.id = "archiveSearchPanel";
+    panel.className = "subcard";
+    panel.style.marginTop = "18px";
+    const heading = document.createElement("h3");
+    heading.textContent = "Buscar y recuperar reporte histórico";
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = "Busca por número TI y consulta el PDF, fotografías, firmas y metadatos guardados en Google Drive.";
+    const row = document.createElement("div");
+    row.className = "actions";
+    const input = document.createElement("input");
+    input.id = "archiveReportNumber";
+    input.placeholder = "TI-000001";
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "Número de reporte histórico");
+    const button = document.createElement("button");
+    button.id = "searchArchivedReport";
+    button.type = "button";
+    button.textContent = "Buscar reporte";
+    const results = document.createElement("div");
+    results.id = "archiveSearchResults";
+    results.style.marginTop = "14px";
+    row.append(input, button);
+    panel.append(heading, hint, row, results);
+    $("driveArchivePanel")?.appendChild(panel);
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      results.textContent = "Buscando en Google Drive…";
+      try { await searchArchivedReport(); }
+      catch (error) { results.textContent = error.message || "No se pudo buscar el reporte."; }
+      finally { button.disabled = false; }
+    });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); button.click(); }
+    });
+  }
+
   function showPanel() {
     const panel = $("driveArchivePanel");
-    if (panel) panel.hidden = false;
+    if (panel) panel.hidden = false;\n    installArchiveSearch();
   }
   function closePanel() {
     const panel = $("driveArchivePanel");
