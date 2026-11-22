@@ -1,6 +1,7 @@
 (()=> {
   const c=window.TRANSALMA_CONFIG;
   const sup=window.supabase.createClient(c.SUPABASE_URL,c.SUPABASE_ANON_KEY);
+  window.TRANSALMA_SUPABASE = sup;
   const $=id=>document.getElementById(id);
   const msg=(id,t)=>{if($(id))$(id).textContent=t||""};
   const today=()=>new Date().toISOString().slice(0,10);
@@ -1786,6 +1787,8 @@ $("editMerchandiseSection").hidden =
       details.forEach(detail=>createEditDetailRow(detail));
     }
   }
+
+  window.TRANSALMA_OPEN_EDIT = openEdit;
 
   function parseClientEmails(value){
     return String(value||"").split(/[;,\n]+/).map(email=>email.trim()).filter(Boolean);
