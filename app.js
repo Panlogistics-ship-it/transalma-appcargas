@@ -5,6 +5,71 @@
   const msg=(id,t)=>{if($(id))$(id).textContent=t||""};
   const today=()=>new Date().toISOString().slice(0,10);
 
+  // Descarga exclusiva de PDF de TRANSALMA a una carpeta elegida por el usuario.
+  const pdfFolderDbName = "transalma-pdf-folder";
+  const pdfFolderStoreName = "handles";
+  function openPdfFolderDb(){
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open(pdfFolderDbName,1);
+      req.onupgradeneeded=()=>req.result.createObjectStore(pdfFolderStoreName);
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+  }
+  async function storePdfFolderHandle(handle){
+    const db=await openPdfFolderDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(pdfFolderStoreName,"readwrite");
+      tx.objectStore(pdfFolderStoreName).put(handle,"reports");
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+    });
+    db.close();
+  }
+  async function getPdfFolderHandle(){
+    const db=await openPdfFolderDb();
+    const handle=await new Promise((resolve,reject)=>{
+      const req=db.transaction(pdfFolderStoreName,"readonly").objectStore(pdfFolderStoreName).get("reports");
+      req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error);
+    });
+    db.close();return handle;
+  }
+  async function choosePdfFolder(){
+    if(!window.showDirectoryPicker){
+      alert("Este navegador no permite seleccionar una carpeta directamente. Usa Microsoft Edge actualizado.");
+      return;
+    }
+    try{
+      const handle=await window.showDirectoryPicker({id:"transalma-report-pdfs",mode:"readwrite"});
+      await storePdfFolderHandle(handle);
+      msg("pdfFolderMessage",`Carpeta de reportes configurada: ${handle.name}`);
+    }catch(error){
+      if(error.name!=="AbortError")msg("pdfFolderMessage",error.message||"No se pudo seleccionar la carpeta.");
+    }
+  }
+  async function savePdfFile(blob,fileName){
+    let handle=null;
+    try{handle=await getPdfFolderHandle()}catch(error){console.warn("No se pudo leer la carpeta PDF guardada:",error)}
+    if(handle){
+      let permission=await handle.queryPermission({mode:"readwrite"});
+      if(permission!=="granted")permission=await handle.requestPermission({mode:"readwrite"});
+      if(permission==="granted"){
+        const fileHandle=await handle.getFileHandle(fileName,{create:true});
+        const writable=await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        msg("pdfFolderMessage",`Guardado en ${handle.name}: ${fileName}`);
+        return;
+      }
+      msg("pdfFolderMessage","El navegador necesita permiso para la carpeta. Selecciónala nuevamente.");
+    }
+    // Respaldo compatible: descarga normal del navegador, sin cambiar su carpeta global.
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }
+
+
   let currentUser=null;
 let currentRole=null;
 let currentIsAdmin=false;
@@ -1198,8 +1263,10 @@ console.timeEnd("PDF - Subida a Supabase");
     if(ev.error)console.warn("PDF generado, pero no se pudo registrar el evento:",ev.error);
 
     // Descargar después de guardar y actualizar todo.
-    doc.save(fileName);
+    await savePdfFile(pdfBlob,fileName);
   }
+
+  if($("choosePdfFolder"))$("choosePdfFolder").onclick=choosePdfFolder;
 
   $("generatePdf").onclick=async()=>{
     if(!lastSavedReportId)return;
@@ -1273,13 +1340,7 @@ $("sendReportEmail").onclick=async()=>{
 
   const url=URL.createObjectURL(file);
   const a=document.createElement("a");
-  a.href=url;
-  a.download=`${report.report_number}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  await savePdfFile(file,`${report.report_number}.pdf`);
 }
   async function history(){
     const {data,error}=await sup.from("reports")
