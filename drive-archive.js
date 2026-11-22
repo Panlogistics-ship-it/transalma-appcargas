@@ -106,10 +106,8 @@
 
   async function findChild(parentId, name) {
     const q = `'${escapeDriveQuery(parentId)}' in parents and name = '${escapeDriveQuery(name)}' and trashed = false`;
-    const url = "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(q) +
-      "&fields=" + encodeURIComponent("files(id,name,mimeType)") + "&pageSize=100";
-    const data = await driveRequest(url);
-    return (data.files || []).find(file => file.name === name) || null;
+    const matches = await listDriveFiles(q, "files(id,name,mimeType),nextPageToken");
+    return matches.find(file => file.name === name) || null;
   }
 
   async function ensureFolder(parentId, name) {
@@ -172,14 +170,27 @@
     return data;
   }
 
+  async function fetchAllRows(table, ordered = false) {
+    const rows = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      let query = sup.from(table).select("*");
+      if (ordered) query = query.order("created_at", { ascending: true });
+      const { data, error } = await query.range(from, from + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  }
+
   async function fetchRows() {
-    const reportsResult = await sup.from("reports").select("*").order("created_at", { ascending: true });
-    if (reportsResult.error) throw reportsResult.error;
-    const photosResult = await sup.from("report_photos").select("*");
-    if (photosResult.error) throw photosResult.error;
-    const signaturesResult = await sup.from("report_signatures").select("*");
-    if (signaturesResult.error) throw signaturesResult.error;
-    return { reports: reportsResult.data || [], photos: photosResult.data || [], signatures: signaturesResult.data || [] };
+    const [reports, photos, signatures] = await Promise.all([
+      fetchAllRows("reports", true),
+      fetchAllRows("report_photos"),
+      fetchAllRows("report_signatures")
+    ]);
+    return { reports, photos, signatures };
   }
 
   async function runArchive() {
@@ -275,13 +286,29 @@
     if (!/^TI-\d{6}$/.test(raw)) throw new Error("Escribe el número completo, por ejemplo TI-000001.");
     const out = $("archiveSearchResults");
     out.replaceChildren();
+    if (!selectedRoot?.id) throw new Error("Selecciona primero la carpeta raíz del archivo.");
+    const sequence = Number(raw.slice(3));
+    const lotStart = Math.floor((sequence - 1) / 10) * 10 + 1;
+    const lotEnd = lotStart + 9;
+    const lotNameForReport = `LOTE_${String(lotStart).padStart(3,"0")}_AL_${String(lotEnd).padStart(3,"0")}`;
+    const lotFolder = await findChild(selectedRoot.id, lotNameForReport);
+    if (!lotFolder) {
+      out.textContent = "No se encontró " + raw + " dentro de la carpeta raíz seleccionada.";
+      return;
+    }
+    const reportFolder = await findChild(lotFolder.id, raw);
+    if (!reportFolder) {
+      out.textContent = "No se encontró la carpeta del reporte " + raw + " en su lote.";
+      return;
+    }
     const metadataName = raw + "_METADATOS.json";
     const matches = await listDriveFiles(
-      "name = '" + escapeDriveQuery(metadataName) + "' and trashed = false",
+      "'" + escapeDriveQuery(reportFolder.id) + "' in parents and name = '" +
+      escapeDriveQuery(metadataName) + "' and trashed = false",
       "files(id,name,mimeType,parents,webViewLink),nextPageToken"
     );
     if (!matches.length) {
-      out.textContent = "No se encontró " + raw + " en la carpeta de archivo autorizada. Verifica que seleccionaste TRANSALMA_REPORTES_ARCHIVO.";
+      out.textContent = "La carpeta de " + raw + " existe, pero no contiene sus metadatos. Revisa el respaldo de ese reporte.";
       return;
     }
     const metaFile = matches[0];
