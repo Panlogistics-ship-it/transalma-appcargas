@@ -390,6 +390,47 @@
     out.dataset.report = JSON.stringify(metadata);
   }
 
+
+  async function saveArchiveVersion(reportId, reason, changes) {
+    if (!accessToken || !selectedRoot?.id) {
+      throw new Error("Conecta Google Drive y selecciona la carpeta de archivo antes de guardar una corrección.");
+    }
+    const { data: report, error: reportError } = await sup.from("reports").select("*").eq("id", reportId).single();
+    if (reportError) throw reportError;
+    const sequence = sequenceNumber(report);
+    if (!sequence) throw new Error("El reporte no tiene un número TI válido.");
+    const lotId = await findChild(selectedRoot.id, lotName(report));
+    if (!lotId) throw new Error("No se encontró el lote del reporte en Drive.");
+    const reportFolder = await findChild(lotId.id, safeName(report.report_number));
+    if (!reportFolder) throw new Error("No se encontró la carpeta del reporte en Drive. Ejecuta primero el respaldo.");
+    const historyId = await ensureFolder(reportFolder.id, "HISTORIAL_VERSIONES");
+    const existing = await listDriveFiles("'" + escapeDriveQuery(historyId) + "' in parents and trashed = false", "files(id,name,mimeType),nextPageToken");
+    const numbers = existing.map(x => Number(String(x.name).replace(/^V/i,""))).filter(Number.isInteger);
+    const next = Math.max(0, ...numbers) + 1;
+    const versionName = "V" + next;
+    const versionId = await ensureFolder(historyId, versionName);
+    let details = [];
+    if (report.report_type === "mercancia") {
+      const result = await sup.from("report_merchandise_details").select("*").eq("report_id", reportId).order("sort_order", {ascending:true});
+      if (result.error) throw result.error;
+      details = result.data || [];
+    }
+    const photos = await sup.from("report_photos").select("*").eq("report_id", reportId);
+    if (photos.error) throw photos.error;
+    const signatures = await sup.from("report_signatures").select("*").eq("report_id", reportId);
+    if (signatures.error) throw signatures.error;
+    const snapshot = new Blob([JSON.stringify({
+      version: versionName, report, details, photos: photos.data || [],
+      signatures: signatures.data || [], reason, changes,
+      saved_at: new Date().toISOString(), source: "TRANSALMA Supabase"
+    }, null, 2)], {type:"application/json"});
+    const saved = await uploadBlob(versionId, report.report_number + "_" + versionName + "_METADATOS.json", snapshot, "application/json");
+    if (saved.skipped) throw new Error("La versión ya existía y no se sobrescribió.");
+    return versionName;
+  }
+
+  window.TRANSALMA_SAVE_ARCHIVE_VERSION = saveArchiveVersion;
+
   function installArchiveSearch() {
     if ($("archiveSearchPanel")) return;
     const panel = document.createElement("section");
