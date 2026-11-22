@@ -1969,8 +1969,20 @@ $("editForm").onsubmit=async e=>{
 
     if(saveError)throw saveError;
 
-    msg("editMessage","Corrección guardada y registrada en auditoría.");
-    setTimeout(adminHistory,700);
+    let archiveNotice = "";
+    if (typeof window.TRANSALMA_SAVE_ARCHIVE_VERSION === "function") {
+      try {
+        const version = await window.TRANSALMA_SAVE_ARCHIVE_VERSION(id, reason, changes);
+        archiveNotice = " También se guardó " + version + " en el historial de Google Drive.";
+      } catch (archiveError) {
+        console.warn("Corrección guardada en Supabase, pero no se pudo crear versión en Drive:", archiveError);
+        archiveNotice = " Atención: la corrección quedó guardada en Supabase, pero no se pudo crear su versión en Drive: " + archiveError.message;
+      }
+    } else {
+      archiveNotice = " Atención: el módulo de Google Drive no está disponible para crear versión.";
+    }
+    msg("editMessage","Corrección guardada y registrada en auditoría." + archiveNotice);
+    setTimeout(adminHistory,1200);
 
   }catch(error){
     console.error("Error al editar reporte:",error);
