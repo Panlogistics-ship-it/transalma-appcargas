@@ -272,7 +272,7 @@
   async function searchArchivedReport() {
     if (!accessToken) throw new Error("Conecta Google Drive primero.");
     const raw = $("archiveReportNumber")?.value.trim().toUpperCase() || "";
-    if (!/^TI-\\d{6}$/.test(raw)) throw new Error("Escribe el número completo, por ejemplo TI-000001.");
+    if (!/^TI-\d{6}$/.test(raw)) throw new Error("Escribe el número completo, por ejemplo TI-000001.");
     const out = $("archiveSearchResults");
     out.replaceChildren();
     const metadataName = raw + "_METADATOS.json";
@@ -383,7 +383,8 @@
 
   function showPanel() {
     const panel = $("driveArchivePanel");
-    if (panel) panel.hidden = false;\n    installArchiveSearch();
+    if (panel) panel.hidden = false;
+    installArchiveSearch();
   }
   function closePanel() {
     const panel = $("driveArchivePanel");
